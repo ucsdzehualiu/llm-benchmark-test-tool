@@ -132,7 +132,7 @@ class AsyncLLMBenchmark:
 async def main():
     # 配置参数
     config = {
-        'base_url': "http://164.30.68.88:8000/v1",
+        'base_url': "http://XXX.XXX.XXX.XXX:8000/v1",
         'model': "Qwen/QwQ-32B",
         'num_requests': 100,
         'concurrency': 20
