@@ -35,7 +35,8 @@ class AsyncLLMBenchmark:
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
                 stream=True,
-                stop=['<|im_end|>']
+                # stop=["STOP_SEQUENCE_THAT_WILL_NEVER_APPEAR"]
+
             )
 
             async for chunk in stream:
@@ -53,7 +54,6 @@ class AsyncLLMBenchmark:
 
             input_tokens = sum(len(msg["content"]) for msg in messages)
             output_duration = last_token_time - first_token_time if first_token_time else 0
-
             return {
                 'ttft': first_token_time - start_time if first_token_time else None,
                 'tpot': output_duration / output_tokens if output_tokens > 0 else None,
@@ -98,11 +98,9 @@ class AsyncLLMBenchmark:
 
             input_tokens = sum(r['input_tokens'] for r in self.results)
             output_tokens = sum(r['output_tokens'] for r in self.results)
-            output_tokens_per_sec_list = [
-                r['output_tokens_per_sec']
-                for r in self.results
-                if r.get('output_tokens_per_sec') is not None
-            ]
+            # for r in self.results:
+            #     print(r['output_tokens'])
+
             report = {
                 'concurrency': self.concurrency,
                 'success': len(self.results),

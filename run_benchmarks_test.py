@@ -21,15 +21,18 @@ async def run_concurrency_test(base_url, model, num_requests, concurrency,
 
 
 async def main():
-    base_url = "http://xxx:8000/v1"
+    base_url = "http://XX.XX.XX.XX:8000/v1"
     model = "Qwen/QwQ-32B"
     num_requests = 100
     concurrency_levels = [10,20,30,40,50]
-
+    max_tokens = 700
+    temperature = 0.7
+    min_input_chars = 1200
+    max_input_chars = 1300
     reports = []
     for concurrency in concurrency_levels:
         print(f"\nTesting with concurrency {concurrency}...")
-        report = await run_concurrency_test(base_url, model, num_requests, concurrency)
+        report = await run_concurrency_test(base_url, model, num_requests, concurrency,max_tokens,temperature, min_input_chars,max_input_chars)
         if report:
             reports.append(report)
         await asyncio.sleep(1)  # Brief pause to avoid server overload
