@@ -21,14 +21,19 @@ async def run_concurrency_test(base_url, model, num_requests, concurrency,
 
 
 async def main():
-    base_url = "http://XX.XX.XX.XX:8000/v1"
-    model = "Qwen/QwQ-32B"
+
+    base_url = "http://xx.xx.xx.xx:8000/v1"
+    #model = "casperhansen/llama-3.3-70b-instruct-awq"
+    model = "mistralai/Mistral-Nemo-Instruct-2407"
+    #model = "Qwen/QwQ-32B"
+
     num_requests = 100
-    concurrency_levels = [10,20,30,40,50]
-    max_tokens = 700
+    concurrency_levels = [1,5,10,20,30,50,70,100]
+
+    max_tokens = 300
     temperature = 0.7
-    min_input_chars = 1200
-    max_input_chars = 1300
+    min_input_chars = 12000
+    max_input_chars = 13000
     reports = []
     for concurrency in concurrency_levels:
         print(f"\nTesting with concurrency {concurrency}...")

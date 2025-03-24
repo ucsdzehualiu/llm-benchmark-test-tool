@@ -3,10 +3,11 @@ import asyncio
 import random
 import statistics
 import time
+from operator import truediv
 
 from openai import AsyncOpenAI
 
-
+#vllm serve mistralai/Mistral-Nemo-Instruct-2407 --swap-space 16 --tensor_parallel_size 1 --gpu-memory-utilization 0.98 --disable-log-requests
 class AsyncLLMBenchmark:
     def __init__(self, base_url, model, num_requests, concurrency, max_tokens, temperature, min_chars, max_chars):
         self.client = AsyncOpenAI(base_url=base_url, api_key="none")
@@ -23,37 +24,44 @@ class AsyncLLMBenchmark:
 
     async def _async_stream_request(self, messages):
         """处理流式响应"""
-        start_time = time.monotonic()
-        first_token_time = None
-        last_token_time = start_time
-        full_response = []
-        output_tokens = 0
+
         try:
-            stream = await self.client.chat.completions.create(
+            stream = await self.client.chat.completions.create(  # 改为chat.completions
                 model=self.model,
-                messages=messages,
+                messages=messages,  # 使用正确的messages参数
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
                 stream=True,
-                # stop=["STOP_SEQUENCE_THAT_WILL_NEVER_APPEAR"]
-
+                stop='<OO>'
             )
+            start_time = time.monotonic()
+            first_token_time = None
+            full_response = []
 
             async for chunk in stream:
-                current_time = time.monotonic()
-                delta_content = chunk.choices[0].delta.content or ""
-
-                if delta_content and first_token_time is None:
-                    first_token_time = current_time
-
-                if delta_content:
-                    last_token_time = current_time
-                    full_response.append(delta_content)
-                    output_tokens += 1
+                if chunk.choices[0].delta.content:
+                    delta_content = chunk.choices[0].delta.content
+                    if delta_content and first_token_time is None:
+                        first_token_time =  time.monotonic()
+                    if delta_content:
+                        full_response.append(delta_content)
+                if chunk.choices[0].finish_reason is not None:
+                    print(chunk.choices[0].finish_reason)
+                    break
+                        # output_tokens += 1
+            # async for chunk in stream:
+            #     current_time = time.monotonic()
+            #     if chunk.choices[0].text:
+            #         if first_token_time is None:
+            #             first_token_time = current_time
+            #         last_token_time = current_time
+            #         output_tokens += 1
             end_time = time.monotonic()
-
+            output_tokens=len(full_response)
             input_tokens = sum(len(msg["content"]) for msg in messages)
-            output_duration = last_token_time - first_token_time if first_token_time else 0
+            output_duration = end_time - first_token_time if first_token_time else 0
+            print(f"prompt 长度: {input_tokens}，生成的 output 长度 {output_tokens}")
+
             return {
                 'ttft': first_token_time - start_time if first_token_time else None,
                 'tpot': output_duration / output_tokens if output_tokens > 0 else None,
@@ -69,10 +77,108 @@ class AsyncLLMBenchmark:
             return None
 
     def _generate_messages(self):
+        """生成强制长回复的提示结构"""
+        # 基础字符长度扩展
         char_count = random.randint(self.min_chars, self.max_chars)
-        # 更准确的中文token估算（按字计算）
-        user_content = ''.join(random.choice('模型性能测试验证') for _ in range(char_count))
-        return [{"role": "user", "content": user_content}]
+
+        # 结构化模板库
+        templates = [
+            {
+                "type": "学术论文",
+                "structure": [
+                    "请撰写一篇不少于3000字的学术论文，题目为《{topic}》。要求包含：",
+                    "1. 研究背景（至少500字，需引用3篇以上参考文献）",
+                    "2. 方法论（详细描述实验设计和实施步骤）",
+                    "3. 数据分析（包含图表解读和统计检验）",
+                    "4. 讨论部分（比较现有研究成果并分析局限性）",
+                    "5. 结论与展望（提出至少三个未来研究方向）",
+                    "请确保每个章节完整且达到字数要求，不要提前结束。"
+                ],
+                "topics": [
+                    "深度学习在蛋白质结构预测中的应用",
+                    "量子计算对现代密码学的影响",
+                    "火星殖民计划的生态闭环系统设计"
+                ]
+            },
+            {
+                "type": "技术文档",
+                "structure": [
+                    "请编写完整的技术文档，主题：{topic}。文档需包含：",
+                    "## 1. 核心原理（从数学公式推导开始）",
+                    "## 2. 系统架构图及组件说明",
+                    "## 3. 部署流程（含Kubernetes集群配置示例）",
+                    "## 4. 性能优化（至少提供5种调优策略）",
+                    "## 5. 故障排查手册（常见错误代码表）",
+                    "文档总长度需超过4000字，每个章节必须完整。"
+                ],
+                "topics": [
+                    "基于Transformer的大规模分布式训练系统",
+                    "实时风控系统的流式处理架构",
+                    "多模态LLM的服务化部署方案"
+                ]
+            },
+            {
+                "type": "分析报告",
+                "structure": [
+                    "请生成完整的行业分析报告：{topic}。结构要求：",
+                    "Ⅰ. 市场现状（数据需包含近5年统计）",
+                    "Ⅱ. 技术路线对比（列表比较至少10项参数）",
+                    "Ⅲ. 产业链图谱（上游供应商到下游应用场景）",
+                    "Ⅳ. 风险评估（SWOT+PESTEL分析）",
+                    "Ⅴ. 投资建议（分短期/中期/长期策略）",
+                    "每个部分不少于800字，总报告需超过5000字。"
+                ],
+                "topics": [
+                    "2024-2030年人工智能芯片行业发展预测",
+                    "可控核聚变商业化路径分析",
+                    "脑机接口技术的医疗应用前景"
+                ]
+            }
+        ]
+
+        # 随机选择模板
+        template = random.choice(templates)
+        topic = random.choice(template["topics"])
+
+        # 构建基础提示
+        prompt_lines = [line.format(topic=topic) for line in template["structure"]]
+        base_prompt = "\n".join(prompt_lines)
+
+        # 添加防截断指令
+        anti_truncation = [
+            "\n重要要求：",
+            "1. 请务必生成完整内容，不要提前结束",
+            "2. 每个章节必须达到指定字数",
+            "3. 如果需要更多空间可以继续扩展",
+            "4. 避免使用'以下简略说明'等缩短性表述",
+            "5. 保持技术细节的完整性"
+        ]
+
+        # 组合最终提示
+        final_prompt = base_prompt + "\n" + "\n".join(anti_truncation)
+
+        # 长度调整策略
+        while len(final_prompt) < char_count:
+            expansion_phrases = [
+                "\n补充说明：需要特别强调的是......",
+                "\n扩展分析：从另一个视角来看......",
+                "\n技术细节补充：具体来说......",
+                "\n历史背景追溯：早在20世纪......",
+                "\n对比研究：与传统方法相比......",
+                "\n典型案例：例如在2023年的......"
+            ]
+            final_prompt += random.choice(expansion_phrases)
+            final_prompt += " " * random.randint(50, 100)  # 添加空白延长
+
+        # 确保最终长度
+        final_prompt = final_prompt[:char_count].rstrip() + "..."  # 保持完整性
+
+        return [{"role": "user", "content": final_prompt}]
+    # def _generate_messages(self):
+    #     """生成符合completions接口的prompt"""
+    #     char_count = random.randint(self.min_chars, self.max_chars)
+    #     # 生成纯文本提示（不带chat格式）
+    #     return ''.join(random.choice('模型性能测试验证') for _ in range(char_count))
 
     async def _worker(self):
         async with self.semaphore:
@@ -80,6 +186,8 @@ class AsyncLLMBenchmark:
             result = await self._async_stream_request(messages)
             if result and result['ttft'] is not None:
                 self.results.append(result)
+
+
 
     async def run(self):
         start_time = time.monotonic()
